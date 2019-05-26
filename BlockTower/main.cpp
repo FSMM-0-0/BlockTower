@@ -6,8 +6,8 @@
 #include <stdio.h>
 
 #define WINDOW_WIDTH 800                          
-#define WINDOW_HEIGHT 800  
-#define BLOCK_HEIGHT 50
+#define WINDOW_HEIGHT 700  
+#define BLOCK_HEIGHT 40
 #define COLOR_NUM 16
 
 HDC g_hdc = NULL, g_mdc = NULL, g_bufdc = NULL;
@@ -42,6 +42,7 @@ void Process_Space(HWND hwnd);
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow)
 {
+	//Step1
 	// Register the window class.
 	const wchar_t CLASS_NAME[] = L"BlockTower";
 	const wchar_t Window_NAME[] = L"BlockTower";
@@ -54,6 +55,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
 	RegisterClass(&wc);
 
+	//Step2
 	// Create the window.
 	HWND hwnd = CreateWindowEx(
 		0,                              // Optional window styles.
@@ -61,7 +63,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 		Window_NAME,    // Window text
 		WS_OVERLAPPEDWINDOW^WS_THICKFRAME,            // Window style, not change size
 		// Size and position
-		600, 100, WINDOW_WIDTH, WINDOW_HEIGHT,
+		400, 20, WINDOW_WIDTH, WINDOW_HEIGHT,
 		NULL,       // Parent window    
 		NULL,       // Menu
 		hInstance,  // Instance handle
@@ -73,11 +75,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 		return 0;
 	}
 
+	//Step3
 	ShowWindow(hwnd, nCmdShow);
 	UpdateWindow(hwnd);
 
+	//Step4
 	Game_Init(hwnd);
 
+	//Step5
 	// Run the message loop.
 	MSG msg = { };
 	while (msg.message != WM_QUIT)
@@ -170,6 +175,7 @@ void Process_Space(HWND hwnd)
 	//add score
 	score++;
 
+	//Step6
 	if (block[0] < tower[9][0]) //left over
 	{
 		block[1] = block[0] + block[1] - tower[9][0];
@@ -180,15 +186,20 @@ void Process_Space(HWND hwnd)
 		block[1] = tower[9][0] + tower[9][1] - block[0];
 	}
 
+	//Step7
 	for (int i = 1; i < 10; i++) {
 		for (int j = 0; j < 3; j++) {
 			tower[i - 1][j] = tower[i][j];
 		}
 		TowerBrush[i - 1] = TowerBrush[i];
 	}
+
+	//Step8
 	for (int i = 0; i < 3; i++)
 		tower[9][i] = block[i];
 	TowerBrush[9] = BlockBursh;
+	
+	//Step9
 	New_Block();
 	Game_Paint(hwnd);
 }
@@ -213,15 +224,18 @@ void Game_CleanUp(HWND hwnd)
 
 void Game_Init(HWND hwnd)
 {
+	//Step10
 	last_time = 0;
 	now_time = 0;
 	tmp_color = 0;
 	score = 0;
 
+	//Step11
 	g_hdc = GetDC(hwnd);
 	g_mdc = CreateCompatibleDC(g_hdc);
 	g_bufdc = CreateCompatibleDC(g_hdc);
 
+	//Step12
 	//tower init
 	for (int i = 0; i < 10; i++) {
 		tower[i][0] = (WINDOW_WIDTH - tmp_width) / 2;
@@ -230,36 +244,43 @@ void Game_Init(HWND hwnd)
 		tmp_color = (tmp_color + 1) % COLOR_NUM;
 	}
 
+	//Step13
 	//set timer
 	SetTimer(hwnd, 1, 1, NULL);
 
 	//创建字体
+	//Step14
 	hFont = CreateFont(40, 0, 0, 0, 700, 0, 0, 0, GB2312_CHARSET, 0, 0, 0, 0, TEXT("Consolas")); 
 	SelectObject(g_mdc, hFont); 
 	SetBkMode(g_mdc, TRANSPARENT);   
 	SetTextColor(g_mdc, RGB(0, 0, 0)); 
+	//Step15
 	sprintf(show_score, "%s%d", score_str, score);
 	int len = MultiByteToWideChar(CP_ACP, 0, show_score, -1, NULL, 0);
 	show_score_t = (wchar_t *)malloc(len * sizeof(wchar_t));
 	MultiByteToWideChar(CP_ACP, 0, show_score, -1, show_score_t, len);
 	TextOut(g_mdc, 600, 100, show_score_t, wcslen(show_score_t));
 
+	//Step16
 	HBITMAP bmp, bmp1;
 	bmp = CreateCompatibleBitmap(g_hdc, WINDOW_WIDTH, WINDOW_HEIGHT);
 	bmp1 = CreateCompatibleBitmap(g_hdc, WINDOW_WIDTH, WINDOW_HEIGHT);
 	SelectObject(g_mdc, bmp);
 	SelectObject(g_bufdc, bmp1);
 	
+	//Step17
 	//background color
 	BackgroundBrush = CreateSolidBrush(RGB(135, 206, 250));
 	SelectObject(g_mdc, BackgroundBrush);
 	Rectangle(g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 	
+	//Step18
 	//tower color
 	for (int i = 0; i < 10; i++) {
 		TowerBrush[i] = CreateSolidBrush(RGB(r[tower[i][2]], g[tower[i][2]], b[tower[i][2]]));
 	}
 
+	//Step19
 	//get new block
 	New_Block();
 
@@ -269,45 +290,58 @@ void Game_Init(HWND hwnd)
 
 void Game_Paint(HWND hwnd)
 {
+	//Step20
 	//background
 	SelectObject(g_mdc, BackgroundBrush);
 	Rectangle(g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
 	//score show
+	//Step21
 	SelectObject(g_mdc, hFont);
 	SetBkMode(g_mdc, TRANSPARENT);
 	SetTextColor(g_mdc, RGB(0, 0, 0));
+	//Step22
 	sprintf(show_score, "%s%d", score_str, score);
 	int len = MultiByteToWideChar(CP_ACP, 0, show_score, -1, NULL, 0);
 	show_score_t = (wchar_t *)malloc(len * sizeof(wchar_t));
 	MultiByteToWideChar(CP_ACP, 0, show_score, -1, show_score_t, len);
 	TextOut(g_mdc, 600, 100, show_score_t, wcslen(show_score_t));
 
+	//Step23
 	//draw tower
 	for (int i = 0; i < 10; i++) {
 		SelectObject(g_mdc, TowerBrush[i]);
 		Rectangle(g_mdc, tower[i][0], WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offet, tower[i][0] + tower[i][1], WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offet);
 	}
 
+	//Step24
 	//draw block
 	SelectObject(g_mdc, BlockBursh);
     //              贴到目标上的坐标                                              宽         高            源               
 	BitBlt(g_mdc, block[0], WINDOW_HEIGHT - 11 * BLOCK_HEIGHT - tower_offet, block[1], BLOCK_HEIGHT, g_bufdc, 0, 0, PATCOPY);
 
+	//Step25
 	//将最后的画面显示在窗口中
 	BitBlt(g_hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, g_mdc, 0, 0, SRCCOPY);
 
+	//Step26
 	last_time = GetTickCount();
 }
 
 void New_Block()
 {
+	//Step27
 	block[1] = tower[9][1];
 	block[2] = tmp_color;
+
+	//Step28
 	direction = !direction;
 	if (direction)
 		block[0] = WINDOW_WIDTH;
 	else
 		block[0] = 0;
+
+	//Step29
 	tmp_color = (tmp_color + 1) % COLOR_NUM;
 	BlockBursh = CreateSolidBrush(RGB(r[block[2]], g[block[2]], b[block[2]]));
 } 
