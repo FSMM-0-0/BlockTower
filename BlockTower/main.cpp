@@ -3,6 +3,7 @@
 #endif 
 
 #include <windows.h>
+#include <stdio.h>
 
 #define WINDOW_WIDTH 800                          
 #define WINDOW_HEIGHT 800  
@@ -11,18 +12,23 @@
 
 HDC g_hdc = NULL, g_mdc = NULL, g_bufdc = NULL;
 HBRUSH BackgroundBrush, TowerBrush[10], BlockBursh; //颜色画刷
-long long last_time = 0, now_time = 0; //刷新时间
+HFONT hFont;
+long long last_time, now_time; //刷新时间
 int refresh_time = 5; //画面刷新间隔
 int tmp_width = 500; //当前块的宽度
-int tmp_x; //当前块的x坐标
 int tmp_color; //当前块的颜色id
 int tower[10][3]; //x, width, rgb
-int block[4]; //x, width, rgb, left or right
+int block[3]; //x, width, rgb
+int direction; //left or right
 const int tower_offet = 38; //调整偏移量
-const int speed = 1; //移动速度 
+const int speed = 5; //移动速度 
+int score; //得分
 int r[100] = {96,130,159,191,217,240,255,255,255,255,255,255,255,255,255,255};
 int g[100] = {0,0,0,0,0,0,0,53,96,121,149,170,193,217,236,247};
 int b[100] = {48,65,80,96,108,120,128,154,175,188,202,213,224,236,245,248};
+char score_str[] = "Score:";
+char show_score[15];
+wchar_t* show_score_t;
 
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -99,7 +105,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_TIMER:
 		//move
-		if (block[4])
+		if (direction)
 		{
 			if (block[0] + block[1] <= tower[9][0])
 			{
@@ -107,7 +113,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				Game_CleanUp(hwnd);
 				PostQuitMessage(0);
 			}
-			block[0] -= 2;
+			block[0] -= speed;
 		}
 		else
 		{
@@ -117,7 +123,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				Game_CleanUp(hwnd);
 				PostQuitMessage(0);
 			}
-			block[0] += 2;
+			block[0] += speed;
 		}
 		break;
 
@@ -129,8 +135,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			break;
 		case VK_SPACE:
 			//提前按下
-			if ((block[4] && block[0] >= tower[9][0] + tower[9][1]) || 
-				(!block[4] && block[0] + block[1] <= tower[9][0]))
+			if ((direction && block[0] >= tower[9][0] + tower[9][1]) ||
+				(!direction && block[0] + block[1] <= tower[9][0]))
 			{
 				Game_Over();
 				Game_CleanUp(hwnd);
@@ -161,6 +167,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void Process_Space(HWND hwnd)
 {
+	//add score
+	score++;
+
 	if (block[0] < tower[9][0]) //left over
 	{
 		block[1] = block[0] + block[1] - tower[9][0];
@@ -201,25 +210,39 @@ void Game_CleanUp(HWND hwnd)
 	ReleaseDC(hwnd, g_hdc);
 }
 
-void Tower_Init()
+
+void Game_Init(HWND hwnd)
 {
+	last_time = 0;
+	now_time = 0;
+	tmp_color = 0;
+	score = 0;
+
+	g_hdc = GetDC(hwnd);
+	g_mdc = CreateCompatibleDC(g_hdc);
+	g_bufdc = CreateCompatibleDC(g_hdc);
+
+	//tower init
 	for (int i = 0; i < 10; i++) {
 		tower[i][0] = (WINDOW_WIDTH - tmp_width) / 2;
 		tower[i][1] = tmp_width;
 		tower[i][2] = tmp_color;
 		tmp_color = (tmp_color + 1) % COLOR_NUM;
 	}
-}
 
-void Game_Init(HWND hwnd)
-{
-	Tower_Init();
+	//set timer
+	SetTimer(hwnd, 1, 1, NULL);
 
-	SetTimer(hwnd, 1, speed, NULL);
-
-	g_hdc = GetDC(hwnd);
-	g_mdc = CreateCompatibleDC(g_hdc);
-	g_bufdc = CreateCompatibleDC(g_hdc);
+	//创建字体
+	hFont = CreateFont(40, 0, 0, 0, 700, 0, 0, 0, GB2312_CHARSET, 0, 0, 0, 0, TEXT("Consolas")); 
+	SelectObject(g_mdc, hFont); 
+	SetBkMode(g_mdc, TRANSPARENT);   
+	SetTextColor(g_mdc, RGB(0, 0, 0)); 
+	sprintf(show_score, "%s%d", score_str, score);
+	int len = MultiByteToWideChar(CP_ACP, 0, show_score, -1, NULL, 0);
+	show_score_t = (wchar_t *)malloc(len * sizeof(wchar_t));
+	MultiByteToWideChar(CP_ACP, 0, show_score, -1, show_score_t, len);
+	TextOut(g_mdc, 600, 100, show_score_t, wcslen(show_score_t));
 
 	HBITMAP bmp, bmp1;
 	bmp = CreateCompatibleBitmap(g_hdc, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -246,8 +269,18 @@ void Game_Init(HWND hwnd)
 
 void Game_Paint(HWND hwnd)
 {
+	//background
 	SelectObject(g_mdc, BackgroundBrush);
 	Rectangle(g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+	//score show
+	SelectObject(g_mdc, hFont);
+	SetBkMode(g_mdc, TRANSPARENT);
+	SetTextColor(g_mdc, RGB(0, 0, 0));
+	sprintf(show_score, "%s%d", score_str, score);
+	int len = MultiByteToWideChar(CP_ACP, 0, show_score, -1, NULL, 0);
+	show_score_t = (wchar_t *)malloc(len * sizeof(wchar_t));
+	MultiByteToWideChar(CP_ACP, 0, show_score, -1, show_score_t, len);
+	TextOut(g_mdc, 600, 100, show_score_t, wcslen(show_score_t));
 
 	//draw tower
 	for (int i = 0; i < 10; i++) {
@@ -270,8 +303,8 @@ void New_Block()
 {
 	block[1] = tower[9][1];
 	block[2] = tmp_color;
-	block[4] = 1 - block[4];
-	if (block[4])
+	direction = !direction;
+	if (direction)
 		block[0] = WINDOW_WIDTH;
 	else
 		block[0] = 0;
