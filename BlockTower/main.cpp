@@ -17,7 +17,9 @@ long long last_time, now_time; //刷新时间
 int refresh_time = 5; //画面刷新间隔
 int tmp_width = 500; //当前块的宽度
 int tmp_color; //当前块的颜色id
-int tower[10][3]; //x, width, rgb
+int tower_x[10]; //x
+int tower_width[10]; //width
+int tower_rgb[10]; //rgb
 int block[3]; //x, width, rgb
 int direction; //left or right
 const int tower_offet = 38; //调整偏移量
@@ -112,7 +114,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		//move
 		if (direction)
 		{
-			if (block[0] + block[1] <= tower[9][0])
+			if (block[0] + block[1] <= tower_x[9])
 			{
 				Game_Over();
 				Game_CleanUp(hwnd);
@@ -122,7 +124,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		else
 		{
-			if (block[0] >= tower[9][0] + tower[9][1])
+			if (block[0] >= tower_x[9] + tower_width[9])
 			{
 				Game_Over();
 				Game_CleanUp(hwnd);
@@ -140,8 +142,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			break;
 		case VK_SPACE:
 			//提前按下
-			if ((direction && block[0] >= tower[9][0] + tower[9][1]) ||
-				(!direction && block[0] + block[1] <= tower[9][0]))
+			if ((direction && block[0] >= tower_x[9] + tower_width[9]) ||
+				(!direction && block[0] + block[1] <= tower_x[9]))
 			{
 				Game_Over();
 				Game_CleanUp(hwnd);
@@ -176,27 +178,28 @@ void Process_Space(HWND hwnd)
 	score++;
 
 	//Step6
-	if (block[0] < tower[9][0]) //left over
+	if (block[0] < tower_x[9]) //left over
 	{
-		block[1] = block[0] + block[1] - tower[9][0];
-		block[0] = tower[9][0];
+		block[1] = block[0] + block[1] - tower_x[9];
+		block[0] = tower_x[9];
 	}
 	else //right over
 	{
-		block[1] = tower[9][0] + tower[9][1] - block[0];
+		block[1] = tower_x[9] + tower_width[9] - block[0];
 	}
 
 	//Step7
 	for (int i = 1; i < 10; i++) {
-		for (int j = 0; j < 3; j++) {
-			tower[i - 1][j] = tower[i][j];
-		}
+		tower_x[i - 1] = tower_x[i];
+		tower_width[i - 1] = tower_width[i];
+		tower_rgb[i - 1] = tower_rgb[i];
 		TowerBrush[i - 1] = TowerBrush[i];
 	}
 
 	//Step8
-	for (int i = 0; i < 3; i++)
-		tower[9][i] = block[i];
+	tower_x[9] = block[0];
+	tower_width[9] = block[1];
+	tower_rgb[9] = block[2];
 	TowerBrush[9] = BlockBursh;
 	
 	//Step9
@@ -221,7 +224,6 @@ void Game_CleanUp(HWND hwnd)
 	ReleaseDC(hwnd, g_hdc);
 }
 
-
 void Game_Init(HWND hwnd)
 {
 	//Step10
@@ -238,9 +240,9 @@ void Game_Init(HWND hwnd)
 	//Step12
 	//tower init
 	for (int i = 0; i < 10; i++) {
-		tower[i][0] = (WINDOW_WIDTH - tmp_width) / 2;
-		tower[i][1] = tmp_width;
-		tower[i][2] = tmp_color;
+		tower_x[i] = (WINDOW_WIDTH - tmp_width) / 2;
+		tower_width[i] = tmp_width;
+		tower_rgb[i] = tmp_color;
 		tmp_color = (tmp_color + 1) % COLOR_NUM;
 	}
 
@@ -277,7 +279,7 @@ void Game_Init(HWND hwnd)
 	//Step18
 	//tower color
 	for (int i = 0; i < 10; i++) {
-		TowerBrush[i] = CreateSolidBrush(RGB(r[tower[i][2]], g[tower[i][2]], b[tower[i][2]]));
+		TowerBrush[i] = CreateSolidBrush(RGB(r[tower_rgb[i]], g[tower_rgb[i]], b[tower_rgb[i]]));
 	}
 
 	//Step19
@@ -286,7 +288,6 @@ void Game_Init(HWND hwnd)
 
 	Game_Paint(hwnd);
 }
-
 
 void Game_Paint(HWND hwnd)
 {
@@ -311,7 +312,7 @@ void Game_Paint(HWND hwnd)
 	//draw tower
 	for (int i = 0; i < 10; i++) {
 		SelectObject(g_mdc, TowerBrush[i]);
-		Rectangle(g_mdc, tower[i][0], WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offet, tower[i][0] + tower[i][1], WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offet);
+		Rectangle(g_mdc, tower_x[i], WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offet, tower_x[i] + tower_width[i], WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offet);
 	}
 
 	//Step24
@@ -331,7 +332,7 @@ void Game_Paint(HWND hwnd)
 void New_Block()
 {
 	//Step27
-	block[1] = tower[9][1];
+	block[1] = tower_width[9];
 	block[2] = tmp_color;
 
 	//Step28
