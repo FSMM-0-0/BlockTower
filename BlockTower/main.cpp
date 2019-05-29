@@ -11,7 +11,7 @@
 #define COLOR_NUM 16
 
 HDC g_hdc = NULL, g_mdc = NULL, g_bufdc = NULL;
-HBRUSH BackgroundBrush, TowerBrush[10], BlockBursh; //颜色画刷
+HBRUSH BackgroundBrush, TowerBrush[10], BlockBrush, DisBrush; //颜色画刷
 HFONT hFont;
 long long last_time, now_time; //刷新时间
 int refresh_time = 5; //画面刷新间隔
@@ -21,9 +21,14 @@ int tower_x[10]; //x
 int tower_width[10]; //width
 int tower_rgb[10]; //rgb
 int block[3]; //x, width, rgb
+int disappear[5]; //多余消失块 x, width, y, height, rgb
+int x0, y0; //消失块中心
+RECT rect; //消失块绘制
 int direction; //left or right
-const int tower_offet = 38; //调整偏移量
+const int tower_offset = 38; //调整偏移量
 const int speed = 5; //移动速度 
+const int dispeed = 20; //消失速率
+int disflag = 0; //是否有消失块
 int score; //得分
 int r[100] = {96,130,159,191,217,240,255,255,255,255,255,255,255,255,255,255};
 int g[100] = {0,0,0,0,0,0,0,53,96,121,149,170,193,217,236,247};
@@ -177,14 +182,34 @@ void Process_Space(HWND hwnd)
 	//add score
 	score++;
 
+	//new 0
+	disflag = 1;
+	disappear[2] = WINDOW_HEIGHT - 10 * BLOCK_HEIGHT - tower_offset;
+	disappear[3] = BLOCK_HEIGHT;
+	disappear[4] = block[2];
+	y0 = disappear[2] + disappear[3] / 2;
+	//new 0
+
 	//Step6
 	if (block[0] < tower_x[9]) //left over
 	{
+		//new 1
+		disappear[0] = block[0];
+		disappear[1] = tower_x[9] - block[0];
+		x0 = disappear[0] + disappear[1] / 2;
+		//new 1
+
 		block[1] = block[0] + block[1] - tower_x[9];
 		block[0] = tower_x[9];
 	}
 	else //right over
 	{
+		//new 2
+		disappear[0] = tower_x[9] + tower_width[9];
+		disappear[1] = block[0] + block[1] - tower_x[9] - tower_width[9];
+		x0 = disappear[0] + disappear[1] / 2;
+		//new 2
+
 		block[1] = tower_x[9] + tower_width[9] - block[0];
 	}
 
@@ -200,7 +225,7 @@ void Process_Space(HWND hwnd)
 	tower_x[9] = block[0];
 	tower_width[9] = block[1];
 	tower_rgb[9] = block[2];
-	TowerBrush[9] = BlockBursh;
+	TowerBrush[9] = BlockBrush;
 	
 	//Step9
 	New_Block();
@@ -215,7 +240,7 @@ void Game_Over()
 void Game_CleanUp(HWND hwnd)
 {
 	DeleteObject(BackgroundBrush);
-	DeleteObject(BlockBursh);
+	DeleteObject(BlockBrush);
 	for (int i = 0; i < 10; i++) {
 		DeleteObject(TowerBrush[i]);
 	}
@@ -312,14 +337,39 @@ void Game_Paint(HWND hwnd)
 	//draw tower
 	for (int i = 0; i < 10; i++) {
 		SelectObject(g_mdc, TowerBrush[i]);
-		Rectangle(g_mdc, tower_x[i], WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offet, tower_x[i] + tower_width[i], WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offet);
+		Rectangle(g_mdc, tower_x[i], WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offset, tower_x[i] + tower_width[i], WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offset);
 	}
 
 	//Step24
 	//draw block
-	SelectObject(g_mdc, BlockBursh);
+	SelectObject(g_mdc, BlockBrush);
     //              贴到目标上的坐标                                              宽         高            源               
-	BitBlt(g_mdc, block[0], WINDOW_HEIGHT - 11 * BLOCK_HEIGHT - tower_offet, block[1], BLOCK_HEIGHT, g_bufdc, 0, 0, PATCOPY);
+	BitBlt(g_mdc, block[0], WINDOW_HEIGHT - 11 * BLOCK_HEIGHT - tower_offset, block[1], BLOCK_HEIGHT, g_bufdc, 0, 0, PATCOPY);
+
+	//new 3
+	if (disflag)
+	{
+		DisBrush = CreateSolidBrush(RGB(r[disappear[4]], g[disappear[4]], b[disappear[4]]));
+		rect.left = disappear[0];
+		rect.top = disappear[2];
+		rect.right = disappear[0] + disappear[1];
+		rect.bottom = disappear[2] + disappear[3];
+		FillRect(g_mdc, &rect, DisBrush);
+
+		if (disappear[1] / dispeed == 0 || disappear[3] / dispeed == 0)
+		{
+			FillRect(g_mdc, &rect, BackgroundBrush);
+			disflag = 0;
+		}
+		else
+		{
+			disappear[1] = disappear[1] - disappear[1] / dispeed;
+			disappear[3] = disappear[3] - disappear[3] / dispeed;
+			disappear[0] = x0 - disappear[1] / 2;
+			disappear[2] = y0 - disappear[3] / 2;
+		}
+	}
+	//new 3
 
 	//Step25
 	//将最后的画面显示在窗口中
@@ -344,5 +394,5 @@ void New_Block()
 
 	//Step29
 	tmp_color = (tmp_color + 1) % COLOR_NUM;
-	BlockBursh = CreateSolidBrush(RGB(r[block[2]], g[block[2]], b[block[2]]));
+	BlockBrush = CreateSolidBrush(RGB(r[block[2]], g[block[2]], b[block[2]]));
 } 
