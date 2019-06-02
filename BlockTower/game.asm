@@ -24,31 +24,67 @@ endm
 
 WinMain			PROTO	:dword, :dword, :dword, :dword
 Process_Space	PROTO	:HWND
-Game_Over		PROTO
+Game_Over		PROTO	:HWND
 Game_CleanUp	PROTO	:HWND
 New_Block		PROTO
 Game_Paint		PROTO	:HWND
 Game_Init		PROTO	:HWND
+Start_Paint		PROTO	:HWND
 
 .data
 	CLASS_NAME			db	"BlockTower", 0	
 	Window_NAME			db	"BlockTower", 0	;窗口名称
+	BUTTON_CLASS_NAME	db	"BUTTON", 0
+	Easy_NAME			db	"Easy", 0
+	Middle_NAME			db	"Middle", 0
+	Diff_NAME			db	"Difficult", 0
+	title_name			db	"BlockTower"
+
+	easy_button_hwnd		HWND 0		;按钮句柄
+	middle_button_hwnd		HWND 0
+	difficult_button_hwnd	HWND 0
 	
 	WINDOW_WIDTH		equ	800			;窗口宽度
 	WINDOW_HEIGHT		equ 700			;窗口高度
+	BUTTON_WIDTH		equ 130         ;按钮宽度
+	BUTTON_HEIGHT		equ 60          ;按钮宽度
 	WINDOW_X			equ	400			;窗口初始位置
+	A_WINDOW_X			equ 330         ;所有模式窗口位置
 	WINDOW_Y			equ	20			;窗口初始位置
+	E_WINDOW_Y			equ 300         ;easy模式窗口位置
+	M_WINDOW_Y			equ 400         ;middle模式窗口位置
+	D_WINDOW_Y			equ 500         ;difficult模式窗口位置
 	BLOCK_HEIGHT		equ	40			;块宽度
-	COLOR_NUM			equ	16			;颜色数量
-	speed				equ	5			;移动速度
+	COLOR_NUM			equ	14			;颜色数量
 	tower_offset		equ	35			;调整偏移量
+	dispeed				equ	20			;消失速率
 
+	EasyID				equ	3001		;button ID
+	Easy_ID			  HMENU 3001
+	MiddleID			equ	3002
+	Middle_ID		  HMENU 3002
+	DifficultID			equ	3003
+	Difficult_ID	  HMENU 3003
+	TIMERID				equ 1
+
+	history_x			dd	1024 dup(?)	;回顾x
+	history_width		dd	1024 dup(?)	;回顾width
+	history_rgb			dd	1024 dup(?)	;回顾rgb
+	total				dd	0			;总塔高
+
+	start_game			dd	0			;判断游戏已经开始
+
+	speed				dd	5			;移动速度
 	last_time			dd	0			;刷新时间
 	now_time			dd	0			;当前时间
 	refresh_time		dd	5			;画面刷新间隔
 	tmp_width			dd	500			;当前块的宽度
 	direction			dd	0			;控制块来的方向left or right
 	block				dd	3 dup(?)	;块的位置 x, 宽度 width, 颜色id rgb
+	disappear			dd	5 dup(?)	;多余消失块 x, width, y, height, rgb
+	x0					dd	0			;消失块中心x
+	y0					dd	0			;消失块中心y
+	disflag				dd	0			;是否有消失块
 	tower_x				dd	10 dup(?)	;塔的位置 x
 	tower_width			dd	10 dup(?)	;塔的宽度 width
 	tower_rgb			dd	10 dup(?)	;塔的颜色id rgb
@@ -57,11 +93,26 @@ Game_Init		PROTO	:HWND
 	TowerBrush		HBRUSH  10 dup(?)	;塔颜色画刷
 	BlockBrush		HBRUSH	?			;块颜色画刷
 	BackgroundBrush	HBRUSH	?			;背景颜色画刷
+	DisBrush		HBRUSH	?			;消失块颜色画刷
+	HistoryBrush	HBRUSH	?			;结束历史画刷
+
 	g_hdc				HDC 0			;内存块
 	g_mdc				HDC 0
 	g_bufdc				HDC 0
+	bmp				HBITMAP ?
+	bmp1			HBITMAP ?
 	hFont				HFONT ?			;得分字体
+	titleFont			HFONT ?			;标题字体
+	buttonFont			HFONT ?			;按钮字体
+
 	msgFont				db	"Consolas", 0	;字体样式
+	msgFont2			db	"Yu Gothic UI", 0	;字体样式
+	msgFont3			db	"Cooper Black", 0	;字体样式
+	boxmsg				db	"You Get Score ", 0 ;消息框
+	boxmsgout			db	50 dup(?)
+	boxmsg2				db	"Do you want to try again?", 0
+	boxFmt				db	"%s%d.%s", 0
+	gameover			db	"Game Over", 0
 	r					db	96,130,159,191,217,240,255,255,255,255,255,255,255,255,255,255 ;颜色
 	g					db	0,0,0,0,0,0,0,53,96,121,149,170,193,217,236,247					
 	b					db	48,65,80,96,108,120,128,154,175,188,202,213,224,236,245,248
@@ -130,8 +181,8 @@ WinMain		proc	hInstance:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdShow:D
 		 invoke UpdateWindow, h_wnd        ; 主窗体更新
 
 		 ;Step4
-		 ;调用游戏初始化函数
-		 invoke	Game_Init, h_wnd
+		 ;绘制主界面
+		 invoke	Start_Paint, h_wnd
 
 		 ;Step5
 		 ;消息循环接收
@@ -140,7 +191,7 @@ WinMain		proc	hInstance:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdShow:D
 				.if eax	;响应消息
 					invoke	TranslateMessage, ADDR msg 
 					invoke	DispatchMessage, ADDR msg
-				.else
+				.elseif	start_game != 0
 					invoke	GetTickCount ;获得当前时间
 					mov	now_time, eax
 					sub	eax, last_time
@@ -165,47 +216,68 @@ WindowProc proc h_wnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 			add	eax, block[4]
 			;向左超过，结束游戏 block[0] + block[1] <= tower_x[9]
 			.if	eax <= tower_x[36] 
-				invoke	Game_Over
-				invoke	Game_CleanUp, h_wnd
-				invoke	PostQuitMessage, 0
+				invoke	Game_Over, h_wnd
+			.else
+				;block[0] -= speed  向左移动
+				mov	eax, block[0]
+				sub	eax, speed
+				mov	block[0], eax
 			.endif
-
-			;block[0] -= speed  向左移动
-			mov	eax, block[0]
-			sub	eax, speed
-			mov	block[0], eax
 		.else ;左边
 			mov	eax, tower_x[36]
 			add	eax, tower_width[36]
 			;向右超过，结束游戏 block[0] >= tower_x[9] + tower_width[9]
 			.if	block[0] >= eax 
-				invoke	Game_Over
-				invoke	Game_CleanUp, h_wnd
-				invoke	PostQuitMessage, 0				
+				invoke	Game_Over, h_wnd
+			.else
+				;block[0] += speed 向右移动
+				mov	eax, block[0]
+				add	eax, speed
+				mov	block[0], eax
 			.endif
-
-			;block[0] += speed 向右移动
-			mov	eax, block[0]
-			add	eax, speed
-			mov	block[0], eax
 		.endif
 	.elseif uMsg==WM_KEYDOWN ;按键响应
 		.if	wParam==VK_ESCAPE ;esc 关闭游戏
 			invoke	DestroyWindow, h_wnd
 		.elseif	wParam==VK_SPACE ;空格 
-			;提前按，退出
-			mov	eax, tower_x[36]
-			add	eax, tower_width[36]
-			mov	ebx, block[0]
-			add	ebx, block[4]
-			.if	(direction && block[0] >= eax) || (!direction && ebx <= tower_x[36]) 
-				invoke	Game_Over
-				invoke	Game_CleanUp, h_wnd
-				invoke	PostQuitMessage, 0					
+			.if start_game != 0
+				;提前按，退出
+				mov	eax, tower_x[36]
+				add	eax, tower_width[36]
+				mov	ebx, block[0]
+				add	ebx, block[4]
+				.if	(direction && block[0] >= eax) || (!direction && ebx <= tower_x[36]) 
+					invoke	Game_Over, h_wnd
+				.else
+					;没有提前按，处理空格函数
+					invoke	Process_Space, h_wnd
+				.endif
+				
 			.endif
 
-			;没有提前按，处理空格函数
-			invoke	Process_Space, h_wnd
+		.endif
+	.elseif uMsg==WM_COMMAND	;button响应
+		.if	wParam==EasyID
+			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
+			invoke	DestroyWindow, middle_button_hwnd	
+			invoke	DestroyWindow, difficult_button_hwnd	
+			mov speed, 3	;设置速度
+			invoke	Game_Init, h_wnd	;游戏初始化
+			mov	start_game, 1	;调用游戏参数
+		.elseif	wParam==MiddleID
+			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
+			invoke	DestroyWindow, middle_button_hwnd	
+			invoke	DestroyWindow, difficult_button_hwnd
+			mov speed, 6	
+			invoke	Game_Init, h_wnd	
+			mov	start_game, 1	
+		.elseif	wParam==DifficultID
+			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
+			invoke	DestroyWindow, middle_button_hwnd	
+			invoke	DestroyWindow, difficult_button_hwnd
+			mov speed, 10
+			invoke	Game_Init, h_wnd	
+			mov	start_game, 1			
 		.endif
 	.elseif uMsg==WM_DESTROY ;关闭消息
 		invoke	Game_CleanUp, h_wnd
@@ -223,13 +295,53 @@ WindowProc endp
 
 ;响应空格键，处理块的累加
 Process_Space proc h_wnd:HWND
-    inc score
+    
+	;加1分
+	inc score
+
+	;new 0
+	;有消失块
+	mov disflag, 1
+	;消失块的 y, height, rgb
+	mov eax, BLOCK_HEIGHT
+	mov ebx, 10
+	mul ebx
+	mov ebx, WINDOW_HEIGHT  
+	sub ebx, eax
+	sub ebx, tower_offset 
+	mov disappear[2*4], ebx
+	mov eax, BLOCK_HEIGHT
+	mov disappear[3*4], eax
+	mov eax, block[2*4]
+	mov disappear[4*4], eax
+	;消失块的中心 y0
+	mov eax, disappear[3*4]
+	mov ebx, 2
+	div ebx
+	add eax, disappear[2*4]
+	mov y0, eax
 
 	;step 6
 	;超出部分，重新计算块的位置x和宽度width
     mov esi, block[0*4]
     mov edi, tower_x[9*4]
     .if esi < edi ;左边超出 block[0] < tower_x[9]
+		;new1
+		;消失块x, width
+		mov eax, block[0*4]
+		mov disappear[0*4], eax
+		mov eax, tower_x[9*4]
+		mov ebx, block[0*4]
+		sub eax, ebx
+		mov disappear[1*4], eax
+		;消失块中心 x0
+		mov eax, disappear[1*4]
+		mov ebx, 2
+		div ebx
+		add eax, disappear[0*4]
+		mov x0, eax
+		;new1
+
         mov eax, block[0*4]
         add eax, block[1*4]
         sub eax, tower_x[9*4]
@@ -237,6 +349,24 @@ Process_Space proc h_wnd:HWND
         mov eax, tower_x[9*4]
         mov block[0*4], eax
     .else ;右边超出
+		;new 2
+		;消失块 x, width
+		mov eax, tower_width[9*4]
+		add eax, tower_x[9*4]
+		mov disappear[0*4],eax
+		mov eax, block[0*4]
+		add eax, block[1*4]
+		sub eax, tower_x[9*4]
+		sub eax, tower_width[9*4]
+		mov disappear[1*4],eax
+		;消失块中心 x0		
+		mov eax, disappear[1*4]
+		mov ebx, 2
+		div ebx
+		add eax, disappear[0*4]
+		mov x0, eax
+		;new 2
+
         mov eax, tower_x[9*4]
         add eax, tower_width[9*4]
         sub eax, block[0*4]
@@ -276,6 +406,17 @@ Process_Space proc h_wnd:HWND
     mov eax, BlockBrush
     mov TowerBrush[9*4], eax
 
+	;over 1
+	mov eax, total
+	mov ebx, block[0]
+	mov history_x[eax * 4], ebx
+	mov ebx, block[1*4]
+	mov history_width[eax * 4],ebx
+	mov ebx, block[2*4]
+	mov history_rgb[eax * 4], ebx
+	inc total
+	;
+
 	;step 9
 	;获取新块，并绘制
     invoke New_Block
@@ -284,7 +425,103 @@ Process_Space proc h_wnd:HWND
 Process_Space endp
 
 ;游戏结束
-Game_Over proc
+Game_Over proc	h_wnd:HWND
+	LOCAL	use_height:dword
+	LOCAL	mini_height:dword
+	LOCAL	mini_ratio:dword
+	LOCAL	rect:RECT 
+
+	;Step 37
+	;界面刷新停止
+	mov start_game, 0
+	invoke KillTimer, h_wnd, TIMERID
+
+	;重新绘制
+	invoke SelectObject, g_mdc, BackgroundBrush
+	invoke Rectangle, g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT
+
+	;Step 38
+	;总高度
+	mov use_height, WINDOW_HEIGHT - 50 - 100
+	;每块高度 use_height / total
+	xor edx, edx
+	mov eax, use_height
+	div total
+	mov mini_height, eax
+	;宽度缩小比例
+	mov mini_ratio, 2
+
+	;Step 39
+	xor esi, esi
+	.while esi < total
+		xor edx, edx
+		mov eax, history_x[esi * 4]
+		div mini_ratio
+		mov history_x[esi * 4], eax
+
+		xor edx, edx
+		mov eax, history_width[esi * 4]
+		div mini_ratio
+		mov history_width[esi * 4], eax
+
+		inc esi
+	.endw
+
+	;Step 40
+	;绘制
+	xor esi, esi
+	.while esi < total
+		mov ebx, history_rgb[esi*4]
+		RGB	r[ebx], g[ebx], b[ebx]
+		invoke CreateSolidBrush, eax
+		mov HistoryBrush, eax
+		
+		;rect.left = history_x[i] + 200;
+		mov eax, history_x[esi * 4]
+		add eax, 200
+		mov rect.left, eax
+
+		;WINDOW_HEIGHT - (i + 1) * mini_height - 50
+		mov	eax, esi
+		inc	eax
+		mov	ebx, mini_height
+		mul	ebx
+		mov	ebx, WINDOW_HEIGHT
+		sub ebx, eax
+		mov eax, 50
+		sub	ebx, eax
+		mov rect.top, ebx
+
+		;history_x[i] + history_width[i] + 200
+		mov ecx, history_x[esi*4]
+		add ecx, history_width[esi*4]
+		add ecx, 200
+		mov rect.right, ecx
+
+		;WINDOW_HEIGHT - i * mini_height - 50
+		mov	eax, ebx
+		mov	edi, mini_height
+		add	eax, edi
+		mov rect.bottom, eax
+		invoke FillRect, g_mdc, addr rect, HistoryBrush
+
+		inc esi
+	.endw
+
+	;显示
+	invoke BitBlt, g_hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, g_mdc, 0, 0, SRCCOPY
+
+	;Step 41
+	;消息框
+	invoke sprintf, offset boxmsgout, offset boxFmt, offset boxmsg, score, offset boxmsg2
+	invoke MessageBox, h_wnd, offset boxmsgout, offset gameover, MB_OKCANCEL
+	.if eax == IDOK
+		invoke Start_Paint, h_wnd
+	.elseif eax == IDCANCEL
+		invoke Game_CleanUp, h_wnd
+		invoke PostQuitMessage, 0
+	.endif
+
 	ret 
 Game_Over endp
 
@@ -342,8 +579,10 @@ New_Block proc
 	ret 
 New_Block endp
 
-;界面绘制
+;主界面绘制
 Game_Paint proc h_wnd:HWND
+	LOCAL	rect:RECT ;消失块的绘制
+
 	;step20 背景颜色
 	invoke SelectObject, g_mdc, BackgroundBrush
 	invoke Rectangle, g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT
@@ -356,14 +595,17 @@ Game_Paint proc h_wnd:HWND
 
 	;step22 显示分数
 	invoke sprintf, offset show_score, offset sdFmt, offset score_str, score
-	invoke TextOut, g_mdc, 600, 100, offset show_score, SIZEOF show_score
+	invoke TextOut, g_mdc, 300, 80, offset show_score, SIZEOF show_score
 
 	;step23 绘制塔，循环10层
 	mov esi, 0
 	.while esi < 10
 		invoke SelectObject, g_mdc, TowerBrush[esi*4]
+		;tower_x[i]
+		mov eax, tower_x[esi * 4]
+		mov rect.left, eax
 
-		;WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offet
+		;WINDOW_HEIGHT - (i + 1) * BLOCK_HEIGHT - tower_offset
 		mov	eax, esi
 		inc	eax
 		mov	ebx, BLOCK_HEIGHT
@@ -372,17 +614,22 @@ Game_Paint proc h_wnd:HWND
 		sub ebx, eax
 		mov eax, tower_offset
 		sub	ebx, eax
+		mov rect.top, ebx
 
 		;tower_x[i] + tower_width[i]
 		mov ecx, tower_x[esi*4]
 		add ecx, tower_width[esi*4]
+		mov rect.right, ecx
 
-		;WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offet
+		;WINDOW_HEIGHT - i * BLOCK_HEIGHT - tower_offset
 		mov	eax, ebx
 		mov	edi, BLOCK_HEIGHT
 		add	eax, edi
+		mov rect.bottom, eax
+
+		invoke FillRect, g_mdc, addr rect, TowerBrush[esi * 4]
 		;                             左          上   右   下
-		invoke Rectangle, g_mdc, tower_x[esi*4], ebx, ecx, eax
+		;invoke Rectangle, g_mdc, tower_x[esi*4], ebx, ecx, eax
 		inc esi
 	.endw
 
@@ -399,6 +646,84 @@ Game_Paint proc h_wnd:HWND
 	invoke BitBlt, g_mdc, block[0], edx, block[4], BLOCK_HEIGHT, g_bufdc, 0, 0, PATCOPY
 	;										宽         高            源
 
+	;new 3
+	;消失块的绘制
+	.if disflag == 1 ;有消失块
+		
+		;消失块坐标
+		mov edx, disappear[4*4]
+		RGB r[edx], g[edx], b[edx]
+		invoke CreateSolidBrush, eax
+		mov DisBrush, eax
+		mov eax, disappear[0*4]
+		mov rect.left, eax
+		mov eax, disappear[2*4]
+		mov rect.top, eax
+		mov eax, disappear[0*4]
+		add eax, disappear[1*4]
+		mov rect.right, eax
+		mov eax, disappear[2*4]
+		add eax, disappear[3*4]
+		mov rect.bottom, eax
+		;绘制消失块
+		invoke FillRect, g_mdc, addr rect, DisBrush
+		
+		;消失块缩小
+		mov eax, disappear[1*4]
+		mov ebx, dispeed
+		div ebx
+		mov edx, eax
+		mov eax, disappear[3*4]
+		mov ebx, dispeed
+		div ebx
+		.if eax == 0 || edx == 0 ;不能再缩了
+			;填充为底色
+			invoke FillRect, g_mdc, addr rect, BackgroundBrush
+			;标志为0
+			mov disflag, 0
+		.else
+			;disappear[1] = disappear[1] - disappear[1] / dispeed;
+			xor edx, edx
+			mov eax, disappear[1*4]
+			mov ebx, dispeed
+			div ebx
+			mov ebx, eax
+			mov eax, disappear[1*4]
+			sub eax, ebx
+			mov disappear[1*4], eax
+			;disappear[3] = disappear[3] - disappear[3] / dispeed;
+			xor edx, edx
+			mov eax, disappear[3*4]
+			mov ebx, dispeed
+			div ebx
+			mov ebx, eax
+			mov eax, disappear[3*4]
+			sub eax, ebx
+			mov disappear[3*4], eax
+			;disappear[0] = x0 - disappear[1] / 2;
+			xor edx, edx
+			mov eax, disappear[1*4]
+			mov ebx, 2
+			div ebx
+			mov ebx, eax
+			mov eax, x0
+			sub eax, ebx
+			mov disappear[0*4], eax
+			;disappear[2] = y0 - disappear[3] / 2;
+			xor edx, edx
+			mov eax, disappear[3*4]
+			mov ebx, 2
+			div ebx
+			mov ebx, eax
+			mov eax, y0
+			sub eax, ebx
+			mov disappear[2*4], eax
+
+		.endif
+
+	.endif
+	;new 3
+
 	;step25
 	;将最后的画面显示在窗口中
 	invoke BitBlt, g_hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, g_mdc, 0, 0, SRCCOPY
@@ -412,7 +737,6 @@ Game_Paint endp
 
 ;游戏界面初始化
 Game_Init proc h_wnd:HWND
-	LOCAL bmp:HBITMAP, bmp1:HBITMAP
 
 	;step10
 	;初始化清零
@@ -421,15 +745,6 @@ Game_Init proc h_wnd:HWND
 	mov now_time, eax
 	mov tmp_color, eax
 	mov score, eax
-
-	;step11
-	;得到内存块
-	invoke GetDC, h_wnd
-	mov g_hdc, eax
-	invoke CreateCompatibleDC, g_hdc
-	mov g_mdc, eax
-	invoke CreateCompatibleDC, g_hdc
-	mov g_bufdc, eax
 
 	;step12 
 	;塔初始化 10层 位置 高度 颜色
@@ -459,13 +774,33 @@ Game_Init proc h_wnd:HWND
 		inc esi
 	.endw
 
+	;over 0
+	;记录初始塔
+	mov esi, 0
+	.while esi < 10
+		;history_x[i] = tower_x[i];
+		mov eax, tower_x[esi * 4]
+		mov history_x[esi * 4], eax
+
+		;history_width[i] = tower_width[i];
+		mov eax, tower_width[esi * 4]
+		mov history_width[esi * 4], eax
+
+		;history_rgb[i] = tower_rgb[i];
+		mov eax, tower_rgb[esi * 4]
+		mov history_rgb[esi * 4], eax
+
+		inc esi
+	.endw
+	mov total, 10
+
 	;step13 
 	;设置计时器
-	invoke SetTimer, h_wnd, 1, 1, NULL
+	invoke SetTimer, h_wnd, TIMERID, 1, NULL
 
 	;step14 
 	;创建字体
-	invoke CreateFont, 40, 0, 0, 0, 700, 0, 0, 0, GB2312_CHARSET, 0, 0, 0, 0, offset msgFont
+	invoke CreateFont, 40, 0, 0, 0, 700, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, offset msgFont
 	mov hFont, eax
 	invoke SelectObject, g_mdc, hFont
 	invoke SetBkMode, g_mdc, TRANSPARENT
@@ -475,21 +810,10 @@ Game_Init proc h_wnd:HWND
 	;step15
 	;显示分数
 	invoke sprintf, offset show_score, offset sdFmt, offset score_str, score
-	invoke TextOut, g_mdc, 600, 100, offset show_score, SIZEOF show_score
-
-	;step16
-	;位图初始化
-	invoke CreateCompatibleBitmap, g_hdc, WINDOW_WIDTH, WINDOW_HEIGHT
-	mov bmp, eax
-	mov bmp1, eax
-	invoke SelectObject, g_mdc, bmp
-	invoke SelectObject, g_bufdc, bmp1
+	invoke TextOut, g_mdc, 300, 80, offset show_score, SIZEOF show_score
 
 	;step17 
-	;背景颜色刷
-	RGB 135, 206, 250
-	invoke CreateSolidBrush, eax
-	mov BackgroundBrush, eax
+	;背景
 	invoke SelectObject, g_mdc, BackgroundBrush
 	invoke Rectangle, g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT
 
@@ -507,8 +831,120 @@ Game_Init proc h_wnd:HWND
 	;step19 
 	;得到新块
 	invoke New_Block
+
 	;绘制
 	invoke Game_Paint, h_wnd
 	ret
 Game_Init endp 
+
+;开始界面绘制
+Start_Paint	proc h_wnd:HWND
+
+	;step11
+	;得到内存块
+	invoke GetDC, h_wnd
+	mov g_hdc, eax
+	invoke CreateCompatibleDC, g_hdc
+	mov g_mdc, eax
+	invoke CreateCompatibleDC, g_hdc
+	mov g_bufdc, eax
+
+	;step16
+	;位图初始化
+	invoke CreateCompatibleBitmap, g_hdc, WINDOW_WIDTH, WINDOW_HEIGHT
+	mov bmp, eax
+	mov bmp1, eax
+	invoke SelectObject, g_mdc, bmp
+	invoke SelectObject, g_bufdc, bmp1
+
+	;Step30
+	;背景颜色刷
+	RGB 255, 236, 245
+	invoke CreateSolidBrush, eax
+	mov BackgroundBrush, eax
+	invoke SelectObject, g_mdc, BackgroundBrush
+	invoke Rectangle, g_mdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT
+
+	;Step31
+	;按钮字体
+	invoke CreateFont, 40, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, offset msgFont2
+	mov buttonFont, eax
+
+	;Step32
+	;创建按钮
+	mov ebx, WS_CHILD 
+	or ebx, WS_VISIBLE
+	or ebx, BS_DEFPUSHBUTTON
+	invoke CreateWindowEx, NULL,\
+                ADDR BUTTON_CLASS_NAME,\ 
+                ADDR Easy_NAME,\ 
+                ebx,\  ;;;;;;;;;;;;;;;;;;;;
+                A_WINDOW_X,\ ;x
+                E_WINDOW_Y,\ ;y
+                BUTTON_WIDTH,\ ;宽
+                BUTTON_HEIGHT,\ ;高
+                h_wnd,\ 
+                Easy_ID,\ 
+                h_wnd,\ 
+                NULL 
+	mov easy_button_hwnd, eax 
+	invoke ShowWindow, easy_button_hwnd, SW_SHOW
+	invoke SendMessage, easy_button_hwnd, WM_SETFONT, buttonFont, 1
+
+	;Step33
+	mov ebx, WS_CHILD 
+	or ebx, WS_VISIBLE
+	or ebx, BS_DEFPUSHBUTTON
+	invoke CreateWindowEx,NULL,\ 
+                ADDR BUTTON_CLASS_NAME,\ 
+                ADDR Middle_NAME,\ 
+                ebx,\  ;;;;;;;;;;;;;;;;;;;;
+                A_WINDOW_X,\ ;x
+                M_WINDOW_Y,\ ;y
+                BUTTON_WIDTH,\ ;宽
+                BUTTON_HEIGHT,\ ;高
+                h_wnd,\ 
+                Middle_ID,\ 
+                h_wnd,\ 
+                NULL 
+	mov middle_button_hwnd, eax 
+	invoke ShowWindow, middle_button_hwnd, SW_SHOW
+	invoke SendMessage, middle_button_hwnd, WM_SETFONT, buttonFont, 1
+
+	;Step34
+	mov ebx, WS_CHILD 
+	or ebx, WS_VISIBLE
+	or ebx, BS_DEFPUSHBUTTON
+	invoke CreateWindowEx,NULL,\ 
+                ADDR BUTTON_CLASS_NAME,\ 
+                ADDR Diff_NAME,\ 
+                ebx,\  ;;;;;;;;;;;;;;;;;;;;
+                A_WINDOW_X,\ ;x
+                D_WINDOW_Y,\ ;y
+                BUTTON_WIDTH,\ ;宽
+                BUTTON_HEIGHT,\ ;高
+                h_wnd,\ 
+                Difficult_ID,\ 
+                h_wnd,\ 
+                NULL 
+	mov difficult_button_hwnd, eax 
+	invoke ShowWindow, difficult_button_hwnd, SW_SHOW
+	invoke SendMessage, difficult_button_hwnd, WM_SETFONT, buttonFont, 1
+
+	;Step35
+	;标题
+	invoke CreateFont, 100, 0, 0, 0, FW_EXTRABOLD, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, offset msgFont3
+	mov titleFont, eax
+	invoke SelectObject, g_mdc, titleFont
+	invoke SetBkMode, g_mdc, TRANSPARENT
+	RGB 0, 0, 0
+	invoke SetTextColor, g_mdc, eax
+	invoke TextOut, g_mdc, 130, 100, offset title_name, SIZEOF title_name
+
+	;Step36
+	;将最后的画面显示在窗口中
+	invoke BitBlt, g_hdc, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, g_mdc, 0, 0, SRCCOPY
+
+	ret
+Start_Paint	endp
 end
