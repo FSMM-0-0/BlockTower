@@ -10,7 +10,7 @@
 #define BLOCK_HEIGHT 40
 #define BUTTON_WIDTH 130
 #define BUTTON_HEIGHT 60
-#define COLOR_NUM 16
+#define COLOR_NUM 14
 #define EasyID 3001
 #define MiddleID 3002
 #define	DifficultID 3003
