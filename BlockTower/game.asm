@@ -14,6 +14,7 @@ includelib	gdi32.lib
 sprintf	PROTO C :ptr sbyte, :vararg
 strlen	PROTO C :ptr sbyte
 
+;RGB宏定义
 RGB macro red,green,blue
         xor eax,eax
         mov ah,blue
@@ -22,6 +23,7 @@ RGB macro red,green,blue
         mov al,red
 endm
 
+;函数声明
 WinMain			PROTO	:dword, :dword, :dword, :dword
 Process_Space	PROTO	:HWND
 Game_Over		PROTO	:HWND
@@ -55,9 +57,7 @@ Start_Paint		PROTO	:HWND
 	M_WINDOW_Y			equ 400         ;middle模式窗口位置
 	D_WINDOW_Y			equ 500         ;difficult模式窗口位置
 	BLOCK_HEIGHT		equ	40			;块宽度
-	COLOR_NUM			equ	14			;颜色数量
 	tower_offset		equ	35			;调整偏移量
-	dispeed				equ	20			;消失速率
 
 	EasyID				equ	3001		;button ID
 	Easy_ID			  HMENU 3001
@@ -74,10 +74,15 @@ Start_Paint		PROTO	:HWND
 
 	start_game			dd	0			;判断游戏已经开始
 
+	dispeed				equ	20			;消失速率
+	COLOR_NUM			equ	45			;颜色数量
+
 	speed				dd	5			;移动速度
 	last_time			dd	0			;刷新时间
 	now_time			dd	0			;当前时间
 	refresh_time		dd	5			;画面刷新间隔
+	score				dd	0			;得分
+
 	tmp_width			dd	500			;当前块的宽度
 	direction			dd	0			;控制块来的方向left or right
 	block				dd	3 dup(?)	;块的位置 x, 宽度 width, 颜色id rgb
@@ -88,7 +93,7 @@ Start_Paint		PROTO	:HWND
 	tower_x				dd	10 dup(?)	;塔的位置 x
 	tower_width			dd	10 dup(?)	;塔的宽度 width
 	tower_rgb			dd	10 dup(?)	;塔的颜色id rgb
-	score				dd	0			;得分
+
 	tmp_color			dd	0			;当前块的颜色id
 	TowerBrush		HBRUSH  10 dup(?)	;塔颜色画刷
 	BlockBrush		HBRUSH	?			;块颜色画刷
@@ -113,12 +118,28 @@ Start_Paint		PROTO	:HWND
 	boxmsg2				db	"Do you want to try again?", 0
 	boxFmt				db	"%s%d.%s", 0
 	gameover			db	"Game Over", 0
-	r					db	96,130,159,191,217,240,255,255,255,255,255,255,255,255,255,255 ;颜色
-	g					db	0,0,0,0,0,0,0,53,96,121,149,170,193,217,236,247					
-	b					db	48,65,80,96,108,120,128,154,175,188,202,213,224,236,245,248
+
 	sdFmt				db	"%s%d", 0	;得分输出格式 
 	score_str			db	"Score: ", 0 ;得分字符串
 	show_score			db	15 dup(?)	;得分显示字符串
+
+	r					db	191,204,217,240,255,  255,255,255,255,255 ;颜色
+						db	238,220,211,202,190,  177,168,159,153,146
+						db	140,134,130,127,120,  106,125,147,170,168
+						db	166,128,77,0,0,       0,0,0,0,24 
+						db	48,95,143,172,182
+
+	g					db	0,0,0,0,0,            53,96,121,149,170
+						db	176,181,164,142,119,  91,72,53,40,26
+						db	13,0,13,26,53,        106,125,147,170,213
+						db	255,255,255,255,227,  202,174,147,121,105
+						db	90,60,30,15,8
+
+	b					db	96,102,108,120,128,   154,175,188,202,213
+						db	234,255,255,255,255,  255,255,255,255,255
+						db	255,255,255,255,255,  255,255,255,255,255
+						db	255,255,255,255,227,  202,174,147,121,118
+						db	115,108,102,99,98
 
 	old_hInstance	HINSTANCE	?
 	CommandLine		LPSTR		?
