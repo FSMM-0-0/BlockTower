@@ -4,18 +4,23 @@
 
 #include <windows.h>
 #include <stdio.h>
+#include "mmsystem.h"
+#pragma comment(lib,"winmm.lib")
 
 #define WINDOW_WIDTH 800                          
 #define WINDOW_HEIGHT 700  
 #define BLOCK_HEIGHT 40
 #define BUTTON_WIDTH 130
 #define BUTTON_HEIGHT 60
-#define COLOR_NUM 14
+#define COLOR_NUM 45
 #define EasyID 3001
 #define MiddleID 3002
 #define	DifficultID 3003
 
 #define TIMERID	1	
+
+MCI_OPEN_PARMS m_mciOpen;  //打开参数
+MCI_PLAY_PARMS m_mciPlay;  //播放参数
 
 HDC g_hdc = NULL, g_mdc = NULL, g_bufdc = NULL;
 HBRUSH BackgroundBrush, TowerBrush[10], BlockBrush, DisBrush, HistoryBrush; //颜色画刷
@@ -48,9 +53,9 @@ const int dispeed = 20; //消失速率
 int disflag = 0; //是否有消失块
 int score; //得分
 int start_game = 0; //判断游戏已经开始
-int r[100] = { 96,130,159,191,217,240,255,255,255,255,255,255,255,255,255,255 };
-int g[100] = { 0,0,0,0,0,0,0,53,96,121,149,170,193,217,236,247 };
-int b[100] = { 48,65,80,96,108,120,128,154,175,188,202,213,224,236,245,248 };
+int r[100] = { 191,204,217,240,255,  255,255,255,255,255, 238,220,211,202,190,  177,168,159,153,146, 140,134,130,127,120,  106,125,147,170,168, 166,128,77,0,0, 0,0,0,0,24, 48,95,143,172,182 };
+int g[100] = { 0,0,0,0,0, 53,96,121,149,170, 176,181,164,142,119,  91,72,53,40,26, 13,0,13,26,53,        106,125,147,170,213, 255,255,255,255,227,  202,174,147,121,105, 90,60,30,15,8 };
+int b[100] = { 96,102,108,120,128,   154,175,188,202,213, 234,255,255,255,255,  255,255,255,255,255, 255,255,255,255,255,  255,255,255,255,255, 255,255,255,255,227,  202,174,147,121,118, 115,108,102,99,98 };
 char score_str[] = "Score:";
 char show_score[15];
 wchar_t* show_score_t;
@@ -64,6 +69,7 @@ void New_Block(); //get new block
 void Game_CleanUp(HWND hwnd); //release resource
 void Game_Over(HWND hwnd);
 void Process_Space(HWND hwnd);
+void BackMusic(HWND hwnd); //back music
 
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow)
@@ -99,6 +105,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 	if (hwnd == NULL)
 	{
 		return 0;
+	}
+
+	//music 1
+	m_mciOpen.lpstrDeviceType = L"mpegvideo"; //要操作的文件类型
+	m_mciOpen.lpstrElementName = L".//source//background.mp3"; //要操作的文件路径
+	MCIERROR mcierror = mciSendCommand(0, MCI_OPEN, MCI_OPEN_TYPE | MCI_OPEN_ELEMENT, (DWORD)&m_mciOpen); //打开文件命令
+	if (mcierror)
+	{
+		char buf[128] = { 0 };
+		mciGetErrorString(mcierror, (LPWSTR)buf, 128);
+		MessageBox(hwnd, (LPWSTR)buf, NULL, 0);
 	}
 
 	//Step3
@@ -195,6 +212,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			DestroyWindow(easy_button_hwnd); //删除按钮
 			DestroyWindow(middle_button_hwnd);
 			DestroyWindow(difficult_button_hwnd);
+			BackMusic(hwnd);
 			speed = 3; //设置速度
 			Game_Init(hwnd); //游戏初始化
 			start_game = 1; //调用游戏参数
@@ -203,6 +221,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			DestroyWindow(easy_button_hwnd);
 			DestroyWindow(middle_button_hwnd);
 			DestroyWindow(difficult_button_hwnd);
+			BackMusic(hwnd);
 			speed = 6;
 			Game_Init(hwnd);
 			start_game = 1;
@@ -211,6 +230,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			DestroyWindow(easy_button_hwnd);
 			DestroyWindow(middle_button_hwnd);
 			DestroyWindow(difficult_button_hwnd);
+			BackMusic(hwnd);
 			speed = 10;
 			Game_Init(hwnd);
 			start_game = 1;
@@ -237,6 +257,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return 0;
 	}
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+void BackMusic(HWND hwnd)
+{
+	m_mciPlay.dwCallback = (DWORD)hwnd;
+	m_mciPlay.dwFrom = (DWORD)(0); //播放起始位置ms为单位
+	mciSendCommand(m_mciOpen.wDeviceID, MCI_PLAY, MCI_NOTIFY | MCI_FROM, (DWORD)(LPVOID)&m_mciPlay);
+	return;
 }
 
 void Process_Space(HWND hwnd)
@@ -358,6 +386,8 @@ void Game_Over(HWND hwnd)
 	int msgBox = MessageBox(hwnd, message_t, L"Game Over", MB_OKCANCEL);
 	if (msgBox == IDOK)
 	{
+		//暂停音乐
+		mciSendCommand(m_mciOpen.wDeviceID, MCI_PAUSE, MCI_NOTIFY | MCI_FROM, (DWORD)(LPVOID)&m_mciPlay);
 		Start_Paint(hwnd);
 	}
 	else if (msgBox == IDCANCEL)

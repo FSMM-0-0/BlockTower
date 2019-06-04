@@ -6,10 +6,12 @@ include		user32.inc
 include		windows.inc
 include		kernel32.inc
 include		gdi32.inc
+include		winmm.inc 
 includelib	kernel32.lib
 includelib	user32.lib
 includelib	msvcrt.lib
 includelib	gdi32.lib
+includelib	winmm.lib
 
 sprintf	PROTO C :ptr sbyte, :vararg
 strlen	PROTO C :ptr sbyte
@@ -32,6 +34,7 @@ New_Block		PROTO
 Game_Paint		PROTO	:HWND
 Game_Init		PROTO	:HWND
 Start_Paint		PROTO	:HWND
+Back_Music		PROTO	:HWND
 
 .data
 	CLASS_NAME			db	"BlockTower", 0	
@@ -45,6 +48,12 @@ Start_Paint		PROTO	:HWND
 	easy_button_hwnd		HWND 0		;按钮句柄
 	middle_button_hwnd		HWND 0
 	difficult_button_hwnd	HWND 0
+
+	m_mciOpen	MCI_OPEN_PARMS	<>		;打开参数	
+	m_mciPlay	MCI_PLAY_PARMS	<>		;播放参数
+	musictype			db	"mpegvideo", 0	;音乐文件类型
+	musicname			db	".//source//background.mp3", 0 ;背景音乐名
+	errbuf				db	128 dup(?)	;音乐错误信息
 	
 	WINDOW_WIDTH		equ	800			;窗口宽度
 	WINDOW_HEIGHT		equ 700			;窗口高度
@@ -197,6 +206,15 @@ WinMain		proc	hInstance:HINSTANCE, hPrevInst:HINSTANCE, CmdLine:LPSTR, CmdShow:D
                 NULL 
 		 mov  	h_wnd,eax 
 
+		 ;music 1
+		 mov ebx, offset musictype
+		 mov m_mciOpen.lpstrDeviceType, ebx
+		 mov ebx, offset musicname
+		 mov m_mciOpen.lpstrElementName, ebx
+		 mov ebx, MCI_OPEN_TYPE
+		 or	ebx, MCI_OPEN_ELEMENT
+		 invoke mciSendCommand, 0, MCI_OPEN, ebx, addr m_mciOpen
+
 		 ;Step3
 		 invoke ShowWindow, h_wnd, CmdShow ; 主窗体显示
 		 invoke UpdateWindow, h_wnd        ; 主窗体更新
@@ -279,25 +297,28 @@ WindowProc proc h_wnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 		.endif
 	.elseif uMsg==WM_COMMAND	;button响应
 		.if	wParam==EasyID
-			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
-			invoke	DestroyWindow, middle_button_hwnd	
-			invoke	DestroyWindow, difficult_button_hwnd	
+			invoke	Back_Music, h_wnd	;背景音乐
 			mov speed, 3	;设置速度
 			invoke	Game_Init, h_wnd	;游戏初始化
+			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
+			invoke	DestroyWindow, middle_button_hwnd	
+			invoke	DestroyWindow, difficult_button_hwnd
 			mov	start_game, 1	;调用游戏参数
 		.elseif	wParam==MiddleID
-			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
-			invoke	DestroyWindow, middle_button_hwnd	
-			invoke	DestroyWindow, difficult_button_hwnd
+			invoke	Back_Music, h_wnd
 			mov speed, 6	
 			invoke	Game_Init, h_wnd	
-			mov	start_game, 1	
-		.elseif	wParam==DifficultID
 			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
 			invoke	DestroyWindow, middle_button_hwnd	
 			invoke	DestroyWindow, difficult_button_hwnd
+			mov	start_game, 1	
+		.elseif	wParam==DifficultID
+			invoke	Back_Music, h_wnd
 			mov speed, 10
 			invoke	Game_Init, h_wnd	
+			invoke	DestroyWindow, easy_button_hwnd	;删除按钮
+			invoke	DestroyWindow, middle_button_hwnd	
+			invoke	DestroyWindow, difficult_button_hwnd
 			mov	start_game, 1			
 		.endif
 	.elseif uMsg==WM_DESTROY ;关闭消息
@@ -313,6 +334,16 @@ WindowProc proc h_wnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 	invoke	DefWindowProc, h_wnd, uMsg, wParam, lParam
 	ret 
 WindowProc endp
+
+Back_Music	proc	h_wnd:HWND
+	mov ebx, h_wnd
+	mov m_mciPlay.dwCallback, ebx
+	mov m_mciPlay.dwFrom, 0 ;播放起始位置ms为单位
+	mov ebx, MCI_NOTIFY
+	or	ebx, MCI_FROM
+	invoke mciSendCommand, m_mciOpen.wDeviceID, MCI_PLAY, ebx, addr m_mciPlay
+	ret
+Back_Music	endp
 
 ;响应空格键，处理块的累加
 Process_Space proc h_wnd:HWND
@@ -537,6 +568,11 @@ Game_Over proc	h_wnd:HWND
 	invoke sprintf, offset boxmsgout, offset boxFmt, offset boxmsg, score, offset boxmsg2
 	invoke MessageBox, h_wnd, offset boxmsgout, offset gameover, MB_OKCANCEL
 	.if eax == IDOK
+		;暂停音乐
+		mov ebx,  MCI_NOTIFY
+		or ebx, MCI_FROM
+		invoke mciSendCommand, m_mciOpen.wDeviceID, MCI_PAUSE, ebx, addr m_mciPlay
+		;重新开始
 		invoke Start_Paint, h_wnd
 	.elseif eax == IDCANCEL
 		invoke Game_CleanUp, h_wnd
